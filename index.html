@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0%य' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%2338bdf8'/><stop offset='100%' stop-color='%23818cf8'/></linearGradient></defs><rect width='32' height='32' rx='8' fill='%230f172a'/><path d='M9 8h8l6 6v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z' fill='none' stroke='url(%23g)' stroke-width='2'/><path d='M17 8v6h6' fill='none' stroke='url(%23g)' stroke-width='2'/><path d='M13 18l3-4 3 4h-2v4h-2v-4z' fill='%2338bdf8'/></svg>">
+    <title>PDF to PNG Ultra</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#090d16',
+                        cardBg: 'rgba(17, 24, 39, 0.7)',
+                        neonCyan: '#06b6d4',
+                        neonPurple: '#8b5cf6',
+                        neonPink: '#ec4899',
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'glow': 'glow 3s ease-in-out infinite alternate',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        },
+                        glow: {
+                            '0%': { opacity: 0.4 },
+                            '100%': { opacity: 0.8 },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome & Google Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- PDF.js and JSZip CDNs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta+Sans', sans-serif;
+            background-color: #090d16;
+            color: #f3f4f6;
+            overflow-x: hidden;
+        }
+
+        /* Custom Glassmorphism & Neon Glow */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .glow-effect {
+            position: relative;
+        }
+        .glow-effect::after {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            background: linear-gradient(90deg, #06b6d4, #8b5cf6, #ec4899);
+            border-radius: inherit;
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .glow-effect:hover::after {
+            opacity: 1;
+        }
+
+        /* Animated background canvas */
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #090d16;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-white relative">
+
+    <!-- Background Canvas for Particles/Motion Graphics -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- Header / Navbar -->
+    <header class="w-full py-6 px-6 md:px-12 flex justify-between items-center z-10">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-cyan-500/30 animate-pulse-slow">
+                <i class="fa-solid fa-bolt text-white text-lg"></i>
+            </div>
+            <div>
+                <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">PDF2PNG Ultra</span>
+                <span class="hidden sm:inline-block ml-2 text-xs px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">Client-Side Engine</span>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button onclick="toggleInfoModal()" class="text-gray-400 hover:text-cyan-400 transition-colors text-sm font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900/50 border border-gray-800">
+                <i class="fa-solid fa-circle-info"></i> How it works
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="container mx-auto px-4 py-8 max-w-4xl z-10 flex-grow flex flex-col justify-center">
+        
+        <!-- Hero Section -->
+        <div class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">
+                Instant <span class="bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">PDF to PNG</span> Converter
+            </h1>
+            <p class="text-gray-400 text-base md:text-lg max-w-xl mx-auto">
+                Lightning fast, 100% secure browser conversion. Single pages download instantly as PNG; multi-page documents pack smoothly into a ZIP archive.
+            </p>
+        </div>
+
+        <!-- Dropzone & Upload Panel -->
+        <div class="glass-panel rounded-3xl p-6 md:p-10 mb-8 transition-all duration-300 relative group glow-effect">
+            <input type="file" id="file-input" accept="application/pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" />
+            
+            <div id="dropzone-content" class="flex flex-col items-center justify-center text-center py-8 pointer-events-none">
+                <div class="w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-purple-600/20 border border-cyan-500/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-xl shadow-cyan-500/10">
+                    <i class="fa-solid fa-file-arrow-up text-3xl text-cyan-400"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-2 text-gray-200">Drag & Drop your PDF here</h3>
+                <p class="text-gray-400 text-sm mb-6">or <span class="text-cyan-400 font-semibold underline underline-offset-4">browse files</span> from your device</p>
+                <div class="flex flex-wrap gap-3 justify-center text-xs text-gray-400 font-medium">
+                    <span class="px-3 py-1 rounded-full bg-gray-800/80 border border-gray-700/50"><i class="fa-solid fa-shield-halved text-green-400 mr-1.5"></i> 100% Private & Secure</span>
+                    <span class="px-3 py-1 rounded-full bg-gray-800/80 border border-gray-700/50"><i class="fa-solid fa-bolt text-amber-400 mr-1.5"></i> Zero Server Uploads</span>
+                    <span class="px-3 py-1 rounded-full bg-gray-800/80 border border-gray-700/50"><i class="fa-solid fa-gauge-high text-cyan-400 mr-1.5"></i> High DPI Rendering</span>
+                </div>
+            </div>
+
+            <!-- Active File / Converting State (Hidden by default) -->
+            <div id="processing-state" class="hidden flex-col items-center justify-center py-6">
+                <div class="w-16 h-16 mb-4 rounded-full bg-cyan-500/20 border-2 border-cyan-400 flex items-center justify-center animate-spin">
+                    <i class="fa-solid fa-circle-notch text-2xl text-cyan-400"></i>
+                </div>
+                <h4 id="file-name-display" class="text-lg font-bold text-gray-200 mb-1">document.pdf</h4>
+                <p id="status-text" class="text-sm text-cyan-400 font-medium mb-4">Extracting and rendering pages...</p>
+                
+                <!-- Progress bar -->
+                <div class="w-full max-w-md bg-gray-800 rounded-full h-2.5 overflow-hidden border border-gray-700">
+                    <div id="progress-bar" class="bg-gradient-to-r from-cyan-500 to-purple-600 h-2.5 rounded-full transition-all duration-200" style="width: 0%"></div>
+                </div>
+                <span id="progress-percentage" class="text-xs text-gray-400 mt-2">0% completed</span>
+            </div>
+        </div>
+
+        <!-- Recent Conversions Section -->
+        <div id="history-section" class="glass-panel rounded-2xl p-6 hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-200 flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i> Recent Conversions
+                </h3>
+                <button onclick="clearHistory()" class="text-xs text-gray-400 hover:text-red-400 transition-colors">Clear History</button>
+            </div>
+            <div id="history-list" class="space-y-3 max-h-60 overflow-y-auto pr-2">
+                <!-- Dynamically populated conversion history items -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full py-6 text-center text-xs text-gray-500 z-10 border-t border-gray-900">
+        <p>&copy; 2026 PDF2PNG Ultra. Built with Tailwind CSS, PDF.js & JSZip. All processing happens locally on your device.</p>
+    </footer>
+
+    <!-- Info Modal -->
+    <div id="info-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm hidden">
+        <div class="glass-panel rounded-3xl p-6 md:p-8 max-w-md w-full mx-4 relative border border-gray-700">
+            <button onclick="toggleInfoModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+            <h3 class="text-xl font-bold mb-4 text-gray-100 flex items-center gap-2">
+                <i class="fa-solid fa-circle-info text-cyan-400"></i> How It Works
+            </h3>
+            <ul class="space-y-3 text-sm text-gray-300 mb-6">
+                <li class="flex items-start gap-2">
+                    <i class="fa-solid fa-check text-cyan-400 mt-1"></i>
+                    <span><strong>Lightning Speed:</strong> Files are read directly in your browser memory using PDF.js. No waiting for server uploads or queues.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <i class="fa-solid fa-check text-cyan-400 mt-1"></i>
+                    <span><strong>Single Page PDFs:</strong> Automatically converts the page and triggers an immediate download as a high-resolution PNG image.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <i class="fa-solid fa-check text-cyan-400 mt-1"></i>
+                    <span><strong>Multi-Page PDFs:</strong> Every page is rendered seamlessly and packaged automatically into a clean `.zip` archive via JSZip.</span>
+                </li>
+            </ul>
+            <button onclick="toggleInfoModal()" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-semibold shadow-lg shadow-cyan-500/20 hover:opacity-90 transition-opacity">
+                Got it, let's convert!
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // --- ANIMATED BACKGROUND PARTICLES ---
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let particles = [];
+        const particleCount = 35;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 0.6;
+                this.vy = (Math.random() - 0.5) * 0.6;
+                this.radius = Math.random() * 2.5 + 1;
+                this.color = Math.random() > 0.5 ? '#06b6d4' : '#8b5cf6';
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = 0.35;
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+        initParticles();
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+
+        // --- MODAL CONTROLS ---
+        function toggleInfoModal() {
+            const modal = document.getElementById('info-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        // --- HISTORY MANAGEMENT ---
+        let conversionHistory = JSON.parse(localStorage.getItem('pdf2png_history') || '[]');
+
+        function saveHistory() {
+            localStorage.setItem('pdf2png_history', JSON.stringify(conversionHistory));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const section = document.getElementById('history-section');
+            const list = document.getElementById('history-list');
+            
+            if (conversionHistory.length === 0) {
+                section.classList.add('hidden');
+                return;
+            }
+
+            section.classList.remove('hidden');
+            list.innerHTML = '';
+
+            conversionHistory.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between p-3 rounded-xl bg-gray-900/60 border border-gray-800/80 hover:border-cyan-500/40 transition-all';
+                div.innerHTML = `
+                    <div class="flex items-center space-x-3 truncate">
+                        <div class="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400 shrink-0">
+                            <i class="fa-solid fa-file-zipper"></i>
+                        </div>
+                        <div class="truncate">
+                            <p class="text-sm font-medium text-gray-200 truncate">${item.name}</p>
+                            <p class="text-xs text-gray-500">${item.pages} page(s) &bull; ${item.date}</p>
+                        </div>
+                    </div>
+                    <button onclick="reDownload(${index})" class="px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500 hover:text-white transition-all text-xs font-semibold shrink-0 ml-2">
+                        <i class="fa-solid fa-download mr-1"></i> Download
+                    </button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function clearHistory() {
+            conversionHistory = [];
+            saveHistory();
+        }
+
+        function addHistoryItem(name, pages, dataUrl) {
+            conversionHistory.unshift({
+                name,
+                pages,
+                dataUrl,
+                date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            });
+            if (conversionHistory.length > 5) conversionHistory.pop();
+            saveHistory();
+        }
+
+        function reDownload(index) {
+            const item = conversionHistory[index];
+            if (item && item.dataUrl) {
+                triggerDownload(item.dataUrl, item.name);
+            }
+        }
+
+        function triggerDownload(dataUrl, filename) {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // --- PDF CONVERSION ENGINE ---
+        const fileInput = document.getElementById('file-input');
+        const dropzoneContent = document.getElementById('dropzone-content');
+        const processingState = document.getElementById('processing-state');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const statusText = document.getElementById('status-text');
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercentage = document.getElementById('progress-percentage');
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (file.type !== 'application/pdf') {
+                alert('Please upload a valid PDF file.');
+                return;
+            }
+
+            await processPdfFile(file);
+            fileInput.value = ''; // Reset input
+        });
+
+        async function processPdfFile(file) {
+            dropzoneContent.classList.add('hidden');
+            processingState.classList.remove('hidden');
+            fileNameDisplay.textContent = file.name;
+            statusText.textContent = 'Reading PDF file...';
+            updateProgress(10);
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                statusText.textContent = 'Parsing document structure...';
+                updateProgress(25);
+
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                const pdfDoc = await loadingTask.promise;
+                const numPages = pdfDoc.numPages;
+
+                statusText.textContent = `Rendering ${numPages} page(s)...`;
+                updateProgress(40);
+
+                const pageDataUrls = [];
+
+                for (let i = 1; i <= numPages; i++) {
+                    const page = await pdfDoc.getPage(i);
+                    const scale = 2.0; // High resolution rendering
+                    const viewport = page.getViewport({ scale });
+
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    await page.render({
+                        canvasContext: context,
+                        viewport: viewport
+                    }).promise;
+
+                    const dataUrl = canvas.toDataURL('image/png');
+                    pageDataUrls.push({
+                        pageNumber: i,
+                        dataUrl: dataUrl
+                    });
+
+                    const currentProgress = 40 + Math.round((i / numPages) * 45);
+                    updateProgress(currentProgress);
+                    statusText.textContent = `Processed page ${i} of ${numPages}`;
+                }
+
+                updateProgress(90);
+
+                const baseName = file.name.replace(/\.[^/.]+$/, '');
+
+                if (numPages === 1) {
+                    statusText.textContent = 'Preparing PNG download...';
+                    const singleDataUrl = pageDataUrls[0].dataUrl;
+                    const outputName = `${baseName}.png`;
+                    
+                    triggerDownload(singleDataUrl, outputName);
+                    addHistoryItem(outputName, 1, singleDataUrl);
+                } else {
+                    statusText.textContent = 'Compressing pages into ZIP archive...';
+                    const zip = new JSZip();
+                    const folder = zip.folder(`${baseName}_pngs`);
+
+                    pageDataUrls.forEach((item) => {
+                        const base64Data = item.dataUrl.replace(/^data:image\/png;base64,/, '');
+                        folder.file(`page_${item.pageNumber}.png`, base64Data, { base64: true });
+                    });
+
+                    const content = await zip.generateAsync({ type: 'blob' });
+                    const zipUrl = URL.createObjectURL(content);
+                    const outputName = `${baseName}_converted.zip`;
+
+                    triggerDownload(zipUrl, outputName);
+                    addHistoryItem(outputName, numPages, zipUrl);
+                }
+
+                updateProgress(100);
+                statusText.textContent = 'Conversion complete! Download started.';
+
+                setTimeout(() => {
+                    processingState.classList.add('hidden');
+                    dropzoneContent.classList.remove('hidden');
+                    updateProgress(0);
+                }, 2500);
+
+            } catch (err) {
+                console.error(err);
+                statusText.textContent = 'Error converting PDF. Please try another file.';
+                setTimeout(() => {
+                    processingState.classList.add('hidden');
+                    dropzoneContent.classList.remove('hidden');
+                    updateProgress(0);
+                }, 3000);
+            }
+        }
+
+        function updateProgress(percent) {
+            progressBar.style.width = `${percent}%`;
+            progressPercentage.textContent = `${percent}% completed`;
+        }
+
+        // Initialize history on load
+        renderHistory();
+    </script>
+</body>
+</html>
